@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # @author André Storhaug <andr3.storhaug@gmail.com>
+# @author Julie Cover
 # @date 2021-05-01
 # @license MIT
 # @version 3.2.4
@@ -10,6 +11,8 @@ set -o pipefail
 shopt -s extglob globstar nullglob dotglob
 
 PERSONAL_TOKEN="$INPUT_PERSONAL_TOKEN"
+SRC_OWNER="$INPUT_SRC_OWNER"
+SRC_REPO_NAME="$INPUT_SRC_REPO_NAME"
 SRC_PATH="$INPUT_SRC_PATH"
 DST_PATH="$INPUT_DST_PATH"
 DST_OWNER="$INPUT_DST_OWNER"
@@ -28,6 +31,16 @@ EMAIL="$INPUT_EMAIL"
 
 if [[ -z "$SRC_PATH" ]]; then
     echo "SRC_PATH environment variable is missing. Cannot proceed."
+    exit 1
+fi
+
+if [[ -z "$SRC_OWNER" ]]; then
+    echo "SRC_OWNER environment variable is missing. Cannot proceed."
+    exit 1
+fi
+
+if [[ -z "$SRC_REPO_NAME" ]]; then
+    echo "SRC_REPO_NAME environment variable is missing. Cannot proceed."
     exit 1
 fi
 
@@ -57,30 +70,32 @@ if [[ -n "$EXCLUDE" && -z "$FILTER" ]]; then
     FILTER="**"
 fi
 
-BASE_PATH=$(pwd)
+BASE_PATH=${SRC_PATH}
 DST_PATH="${DST_PATH:-${SRC_PATH}}"
 
 USERNAME="${USERNAME:-${GITHUB_ACTOR}}"
 EMAIL="${EMAIL:-${GITHUB_ACTOR}@users.noreply.github.com}"
 
-SRC_BRANCH="${SRC_BRANCH:-master}"
-DST_BRANCH="${DST_BRANCH:-master}"
+SRC_BRANCH="${SRC_BRANCH:-main}"
+DST_BRANCH="${DST_BRANCH:-main}"
 
-SRC_REPO="${GITHUB_REPOSITORY}${SRC_WIKI}"
-SRC_REPO_NAME="${GITHUB_REPOSITORY#*/}${SRC_WIKI}"
+SRC_REPO="${SRC_OWNER}/${SRC_REPO_NAME}${SRC_WIKI}"
+SRC_REPO_NAME="${SRC_REPO_NAME}${SRC_WIKI}"
 DST_REPO="${DST_OWNER}/${DST_REPO_NAME}${DST_WIKI}"
 DST_REPO_NAME="${DST_REPO_NAME}${DST_WIKI}"
 
 DST_REPO_DIR=dst_repo_dir
+SRC_REPO_DIR=src_repo_dir
 FINAL_SOURCE="${SRC_REPO_NAME}/${SRC_PATH}"
 
+echo "Username: ${USERNAME}"
 git config --global user.name "${USERNAME}"
 git config --global user.email "${EMAIL}"
 
 if [[ -z "$FILE_FILTER" ]]; then
-    echo "Copying \"${SRC_REPO_NAME}/${SRC_PATH}\" and pushing it to ${DST_OWNER}/${DST_REPO_NAME}"
+    echo "Copying \"${SRC_OWNER}/${SRC_REPO_NAME}/${SRC_PATH}\" and pushing it to ${DST_OWNER}/${DST_REPO_NAME}"
 else
-    echo "Copying files matching \"${FILE_FILTER}\" from \"${SRC_REPO_NAME}/${SRC_PATH}\" and pushing it to ${DST_OWNER}/${DST_REPO_NAME}"
+    echo "Copying files matching \"${FILE_FILTER}\" from \"${SRC_OWNER}/${SRC_REPO_NAME}/${SRC_PATH}\" and pushing it to ${DST_OWNER}/${DST_REPO_NAME}"
 fi
 
 git clone --branch ${SRC_BRANCH} --single-branch --depth 1 https://${PERSONAL_TOKEN}@github.com/${SRC_REPO}.git
@@ -88,24 +103,24 @@ if [ "$?" -ne 0 ]; then
     echo >&2 "Cloning '$SRC_REPO' failed"
     exit 1
 fi
-rm -rf ${SRC_REPO_NAME}/.git
+rm -rf "${SRC_REPO_NAME}"/.git
 
 if [[ -n "$FILE_FILTER" ]]; then
-    find ${SRC_REPO_NAME}/ -type f -not -name "${FILE_FILTER}" -exec rm {} \;
+    find "${SRC_REPO_NAME}"/ -type f -not -name "${FILE_FILTER}" -exec rm {} \;
 fi
 
 if [[ -n "$FILTER" ]]; then
     tmp_dir=$(mktemp -d -t ci-XXXXXXXXXX)
-    mkdir ${temp_dir}/${SRC_REPO_NAME}
-    cd ${SRC_REPO_NAME}
+    mkdir "${tmp_dir}/${SRC_REPO_NAME}"
+    cd "${SRC_REPO_NAME}" || exit "$?"
     FINAL_SOURCE="${tmp_dir}/${SRC_REPO_NAME}/${SRC_PATH}"
     SAVEIFS=$IFS
     IFS=$(echo -en "\n\b")
-    for f in ${FILTER} ; do
+    for f in ${FILTER}; do
         [ -e "$f" ] || continue
         [ -d "$f" ] && continue
-        if [[ -n "$EXCLUDE" ]] ; then
-            [[ "$f" == $EXCLUDE ]] && continue
+        if [[ -n "$EXCLUDE" ]]; then
+            [[ "$f" == "$EXCLUDE" ]] && continue
         fi
         file_dir=$(dirname "${f}")
         mkdir -p "${tmp_dir}/${SRC_REPO_NAME}/${file_dir}" && cp "${f}" "${tmp_dir}/${SRC_REPO_NAME}/${file_dir}"
@@ -114,12 +129,11 @@ if [[ -n "$FILTER" ]]; then
     cd ..
 fi
 
-
-git clone --branch ${DST_BRANCH} --single-branch --depth 1 https://${PERSONAL_TOKEN}@github.com/${DST_REPO}.git ${DST_REPO_DIR}
+git clone --branch "${DST_BRANCH}" --single-branch --depth 1 https://"${PERSONAL_TOKEN}"@github.com/"${DST_REPO}".git ${DST_REPO_DIR}
 if [ "$?" -ne 0 ]; then
     echo >&2 "Cloning branch '$DST_BRANCH' in '$DST_REPO' failed"
     echo >&2 "Falling back to default branch"
-    git clone --single-branch --depth 1 https://${PERSONAL_TOKEN}@github.com/${DST_REPO}.git ${DST_REPO_DIR}
+    git clone --single-branch --depth 1 https://"${PERSONAL_TOKEN}"@github.com/"${DST_REPO}".git ${DST_REPO_DIR}
     cd ${DST_REPO_DIR} || exit "$?"
     echo >&2 "Creating branch '$DST_BRANCH'"
     git checkout -b ${DST_BRANCH}
@@ -131,9 +145,9 @@ if [ "$?" -ne 0 ]; then
 fi
 
 if [ "$CLEAN" = "true" ]; then
-    if [ -f "${DST_REPO_DIR}/${DST_PATH}" ] ; then
+    if [ -f "${DST_REPO_DIR}/${DST_PATH}" ]; then
         find "${DST_REPO_DIR}/${DST_PATH}" -type f -not -path '*/\.git/*' -delete
-    elif [ -d "${DST_REPO_DIR}/${DST_PATH}" ] ; then
+    elif [ -d "${DST_REPO_DIR}/${DST_PATH}" ]; then
         find "${DST_REPO_DIR}/${DST_PATH%/*}"/* -type f -not -path '*/\.git/*' -delete
     else
         echo >&2 "Nothing to clean 🧽"
@@ -159,7 +173,7 @@ else
     # Uncommitted changes
     git add -A
     git commit --message "${COMMIT_MESSAGE}"
-    git push origin ${DST_BRANCH}
+    git push origin "${DST_BRANCH}"
 fi
 
 echo "Copying complete 👌"

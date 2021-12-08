@@ -1,15 +1,21 @@
-name: 'Copycat Action'
-description: 'GitHub Action for copying files to other repositories'
-author: 'André Storhaug'
+name: 'Copy Anywhere Action'
+description: 'GitHub Action for copying files from any repo to any other repo'
+author: 'Julie Cover'
 branding:
   icon: 'copy'
-  color: 'red'
+  color: 'purple'
 inputs:
   personal_token:
     description: 'Personal access token'
     required: true
   src_path:
     description: 'The source path to the file(s) or folder(s) to copy from'
+    required: true
+  src_owner:
+    description: 'The name of the owner of the repository to copy from'
+    required: true
+  src_repo_name:
+    description: 'The name of the repository to copy from'
     required: true
   dst_path:
     description: 'The destination path to copy the file(s) or folder(s) to'
@@ -23,11 +29,11 @@ inputs:
   src_branch:
     description: 'The branch name of the source repository'
     required: false
-    default: 'master'
+    default: 'main'
   dst_branch:
     description: 'The branch name of the destination repository'
     required: false
-    default: 'master'
+    default: 'main'
   clean:
     description: 'Set to true if the dst_path should be emptied before copying'
     default: false
